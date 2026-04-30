@@ -8,7 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import {
-  Brain, TrendingUp, TrendingDown, AlertTriangle, CheckCircle,
+  Brain, TrendingDown, AlertTriangle, CheckCircle,
   Loader2, RefreshCw, Lightbulb, Target, BarChart3, Zap,
   ArrowUp, ArrowDown, Minus, Star,
 } from "lucide-react";
@@ -67,10 +67,10 @@ interface ScreenerStock {
 
 function patternStyle(type: CoachingPattern["type"]) {
   switch (type) {
-    case "fomo":           return { color: "text-amber-600 dark:text-amber-400", bg: "bg-amber-500/10 border-amber-500/30", icon: Zap };
-    case "panic_sell":     return { color: "text-rose-600 dark:text-rose-400",   bg: "bg-rose-500/10 border-rose-500/30",   icon: TrendingDown };
+    case "fomo":               return { color: "text-amber-600 dark:text-amber-400",   bg: "bg-amber-500/10 border-amber-500/30",   icon: Zap };
+    case "panic_sell":         return { color: "text-rose-600 dark:text-rose-400",     bg: "bg-rose-500/10 border-rose-500/30",     icon: TrendingDown };
     case "over_concentration": return { color: "text-orange-600 dark:text-orange-400", bg: "bg-orange-500/10 border-orange-500/30", icon: AlertTriangle };
-    case "positive":       return { color: "text-emerald-600 dark:text-emerald-400", bg: "bg-emerald-500/10 border-emerald-500/30", icon: CheckCircle };
+    case "positive":           return { color: "text-emerald-600 dark:text-emerald-400", bg: "bg-emerald-500/10 border-emerald-500/30", icon: CheckCircle };
   }
 }
 
@@ -82,6 +82,7 @@ function ScenarioPlanner() {
   const [result, setResult] = useState<ScenarioResult | null>(null);
   const [portfolioValue, setPortfolioValue] = useState(0);
   const [error, setError] = useState("");
+  const [rewrittenScenario, setRewrittenScenario] = useState<string | null>(null);
 
   const examples = [
     "What if IHSG drops 20% in a market crash?",
@@ -95,6 +96,7 @@ function ScenarioPlanner() {
     setLoading(true);
     setError("");
     setResult(null);
+    setRewrittenScenario(null);
     try {
       const res = await fetch("/api/ai/scenario", {
         method: "POST",
@@ -105,6 +107,7 @@ function ScenarioPlanner() {
       if (!res.ok) { setError(data.error || "Failed"); return; }
       setResult(data.analysis);
       setPortfolioValue(data.portfolioValue);
+      setRewrittenScenario(data.rewrittenScenario || null);
     } catch {
       setError("Something went wrong. Please try again.");
     } finally {
@@ -123,7 +126,7 @@ function ScenarioPlanner() {
           <Textarea
             placeholder="e.g. What if IHSG drops 20% due to a global recession?"
             value={scenario}
-            onChange={(e) => setScenario(e.target.value)}
+            onChange={(e) => { setScenario(e.target.value); setRewrittenScenario(null); }}
             rows={3}
             className="resize-none"
           />
@@ -136,8 +139,22 @@ function ScenarioPlanner() {
             ))}
           </div>
           <Button onClick={analyze} disabled={loading || !scenario.trim()} className="w-full">
-            {loading ? <><Loader2 className="w-4 h-4 animate-spin mr-2" />Analyzing...</> : <><Brain className="w-4 h-4 mr-2" />Analyze Scenario</>}
+            {loading
+              ? <><Loader2 className="w-4 h-4 animate-spin mr-2" />Analyzing...</>
+              : <><Brain className="w-4 h-4 mr-2" />Analyze Scenario</>}
           </Button>
+
+          {/* Notif rewrite */}
+          {rewrittenScenario && (
+            <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 text-sm">
+              <Lightbulb className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+              <div>
+                <p className="text-xs text-muted-foreground mb-0.5">Pertanyaan kamu dikonversi ke scenario:</p>
+                <p className="text-amber-700 dark:text-amber-300 font-medium italic">&ldquo;{rewrittenScenario}&rdquo;</p>
+              </div>
+            </div>
+          )}
+
           {error && <p className="text-sm text-destructive">{error}</p>}
         </CardContent>
       </Card>
@@ -266,7 +283,6 @@ function CoachingReport() {
 
   return (
     <div className="space-y-5">
-      {/* Overall score */}
       <Card>
         <CardContent className="pt-5">
           <div className="flex items-center gap-4">
@@ -292,7 +308,6 @@ function CoachingReport() {
         </CardContent>
       </Card>
 
-      {/* Patterns */}
       {coaching.patterns.length > 0 && (
         <div className="space-y-3">
           <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Detected Patterns</h3>
@@ -318,7 +333,6 @@ function CoachingReport() {
         </div>
       )}
 
-      {/* Tips */}
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-sm flex items-center gap-2">
@@ -401,7 +415,6 @@ function WeeklyReportTab() {
 
   return (
     <div className="space-y-5">
-      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h3 className="font-semibold">Weekly Report</h3>
@@ -416,7 +429,6 @@ function WeeklyReportTab() {
         </Button>
       </div>
 
-      {/* Summary card */}
       <Card className="border-primary/20 bg-gradient-to-br from-primary/5 to-transparent">
         <CardContent className="pt-5">
           <p className="text-sm text-muted-foreground mb-4">{report.weekSummary}</p>
@@ -443,7 +455,6 @@ function WeeklyReportTab() {
         </CardContent>
       </Card>
 
-      {/* Top/worst performers */}
       <div className="grid grid-cols-2 gap-3">
         {report.topPerformer && (
           <Card className="bg-emerald-500/5 border-emerald-500/20">
@@ -475,7 +486,6 @@ function WeeklyReportTab() {
         )}
       </div>
 
-      {/* Coaching notes */}
       {report.coachingNotes && (
         <Card>
           <CardContent className="pt-4 pb-4">
@@ -490,7 +500,6 @@ function WeeklyReportTab() {
         </Card>
       )}
 
-      {/* Goal progress */}
       {report.goalProgress && report.goalProgress.length > 0 && (
         <Card>
           <CardHeader className="pb-3">
@@ -499,7 +508,7 @@ function WeeklyReportTab() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            {report.goalProgress.map((g, i) => (
+            {report.goalProgress.filter((g) => g.name).map((g, i) => (
               <div key={i}>
                 <div className="flex items-center justify-between mb-1.5">
                   <span className="text-sm font-medium truncate">{g.name}</span>
@@ -516,7 +525,6 @@ function WeeklyReportTab() {
         </Card>
       )}
 
-      {/* Recommendations */}
       {report.recommendations && report.recommendations.length > 0 && (
         <Card>
           <CardHeader className="pb-3">

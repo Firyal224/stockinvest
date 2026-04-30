@@ -11,12 +11,16 @@ export const openrouter = new OpenAI({
 
 // Free models — tried in order, auto-fallback if one fails
 const FREE_MODELS = [
-  "google/gemini-2.0-flash-001",
-  "google/gemini-2.5-flash-preview:free",
-  "deepseek/deepseek-chat-v3-5:free",
+  "openrouter/free",                        // auto-pilih model free terbaik yang tersedia
+  "google/gemma-3-27b-it:free",             // Gemma 3 27B - tidak ada safety filter ketat
+  "qwen/qwen3-235b-a22b:free",              // Qwen3 235B - sangat capable
+  "meta-llama/llama-3.3-70b-instruct:free", // Llama 3.3 70B - reliable
+  "deepseek/deepseek-chat-v3-0324:free",  // ← fix nama model
   "meta-llama/llama-4-maverick:free",
   "microsoft/mai-ds-r1:free",
   "mistralai/mistral-7b-instruct:free",
+  "google/gemini-2.0-flash-001",
+  "google/gemini-2.5-flash-preview:free",
 ];
 
 export async function generateAIText(
@@ -41,7 +45,7 @@ export async function generateAIText(
     } catch (err: unknown) {
       const status = (err as { status?: number })?.status;
       // Only fallback on 404 (model not found) or 429 (rate limit)
-      if (status === 404 || status === 429) {
+      if (status === 400 || status === 404 || status === 429) {
         console.warn(`[AI] Model ${model} unavailable (${status}), trying next...`);
         lastError = err;
         continue;

@@ -19,12 +19,52 @@ export async function GET() {
 
   if (!latest) return NextResponse.json({ report: null });
 
+  let pnlSummary = null;
+  let goalProgress: unknown[] = [];
+  let recommendations: unknown[] = [];
+  let weekSummary = "";
+  let topPerformer = null;
+  let worstPerformer = null;
+
+  try {
+    pnlSummary = latest.pnlSummary ? JSON.parse(latest.pnlSummary) : null;
+    if (pnlSummary && (isNaN(pnlSummary.totalValue) || isNaN(pnlSummary.netPnl) || isNaN(pnlSummary.netPnlPct))) {
+      pnlSummary = null;
+    }
+  } catch { pnlSummary = null; }
+
+  try {
+    const raw = latest.goalProgress ? JSON.parse(latest.goalProgress) : [];
+    goalProgress = Array.isArray(raw) ? raw.filter((g: { name?: string; progressPct?: number }) => g.name && g.progressPct !== undefined) : [];
+  } catch { goalProgress = []; }
+
+  try {
+    const raw = latest.recommendations ? JSON.parse(latest.recommendations) : [];
+    recommendations = Array.isArray(raw) ? raw : [];
+  } catch { recommendations = []; }
+
+  if (latest.coachingNotes?.startsWith("__meta__:")) {
+    try {
+      const [metaLine, ...rest] = latest.coachingNotes.split("\n\n");
+      const meta = JSON.parse(metaLine.replace("__meta__:", ""));
+      weekSummary = meta.weekSummary || "";
+      topPerformer = meta.topPerformer || null;
+      worstPerformer = meta.worstPerformer || null;
+      latest.coachingNotes = rest.join("\n\n");
+    } catch { /* skip */ }
+  }
+
   return NextResponse.json({
     report: {
-      ...latest,
-      pnlSummary: latest.pnlSummary ? JSON.parse(latest.pnlSummary) : null,
-      goalProgress: latest.goalProgress ? JSON.parse(latest.goalProgress) : null,
-      recommendations: latest.recommendations ? JSON.parse(latest.recommendations) : null,
+      id: latest.id,
+      createdAt: latest.createdAt,
+      weekSummary,
+      topPerformer,
+      worstPerformer,
+      pnlSummary,
+      coachingNotes: latest.coachingNotes || "",
+      goalProgress,
+      recommendations,
     },
   });
 }
@@ -65,56 +105,82 @@ export async function POST() {
   const totalValue = portfolioDetail.reduce((s, h) => s + h.currentValue, 0);
   const totalInvested = portfolioDetail.reduce((s, h) => s + h.totalInvested, 0);
   const netPnl = totalValue - totalInvested;
+  const netPnlPct = totalInvested > 0 ? (netPnl / totalInvested) * 100 : 0;
+
+  // Hitung top & worst dari data real
+  const sorted = [...portfolioDetail].sort((a, b) => b.pnlPct - a.pnlPct);
+  const topPerformer = sorted[0] ? { symbol: sorted[0].symbol, pnlPct: sorted[0].pnlPct } : null;
+  const worstPerformer = sorted[sorted.length - 1]
+    ? { symbol: sorted[sorted.length - 1].symbol, pnlPct: sorted[sorted.length - 1].pnlPct }
+    : null;
 
   const goalsInfo = userGoals.map((g) => ({
     name: g.name,
     targetAmount: g.targetAmount,
     currentAmount: g.currentAmount || 0,
-    status: g.status,
+    progressPct: g.targetAmount > 0 ? ((g.currentAmount || 0) / g.targetAmount) * 100 : 0,
   }));
 
-  const prompt = `You are an Indonesian stock portfolio coach writing a weekly performance report.
-
-Portfolio holdings this week:
-${JSON.stringify(portfolioDetail, null, 2)}
-Total portfolio value: IDR ${totalValue.toLocaleString()}
-Total invested: IDR ${totalInvested.toLocaleString()}
-Net PnL: IDR ${netPnl.toLocaleString()} (${totalInvested > 0 ? ((netPnl / totalInvested) * 100).toFixed(2) : 0}%)
-
-Orders this week: ${weekOrders.length} transactions
-Financial goals: ${JSON.stringify(goalsInfo)}
-User risk profile: ${userData?.riskProfile || "moderate"}
-
-Respond ONLY in valid JSON:
+  const systemPrompt = `You are an Indonesian stock portfolio coach writing a weekly performance report.
+You MUST respond ONLY with raw valid JSON, no markdown, no backticks, no explanation.
+Use this exact structure:
 {
-  "weekSummary": "2-3 sentence week overview",
-  "pnlSummary": { "totalValue": number, "totalInvested": number, "netPnl": number, "netPnlPct": number },
-  "topPerformer": { "symbol": "string", "pnlPct": number },
-  "worstPerformer": { "symbol": "string", "pnlPct": number },
-  "coachingNotes": "2-3 sentences behavioral feedback",
+  "weekSummary": "2-3 sentence week overview in Indonesian",
+  "coachingNotes": "2-3 sentences behavioral feedback in Indonesian",
   "goalProgress": [{ "name": "string", "progressPct": number, "status": "on_track"|"behind"|"ahead" }],
-  "recommendations": [{ "symbol": "string", "action": "buy"|"watch"|"hold", "reason": "string" }]
+  "recommendations": [{ "symbol": "BBCA.JK", "action": "buy"|"watch"|"hold", "reason": "string" }]
 }`;
 
-  const text = await generateAIText(prompt, "Generate my weekly report", 1000);
+  const userMessage = `Portfolio:
+${JSON.stringify(portfolioDetail, null, 2)}
+Total value: IDR ${totalValue.toLocaleString()}
+Net PnL: IDR ${netPnl.toLocaleString()} (${netPnlPct.toFixed(2)}%)
+Orders this week: ${weekOrders.length}
+Goals: ${JSON.stringify(goalsInfo)}
+Risk profile: ${userData?.riskProfile || "moderate"}
+Generate my weekly report.`;
+
+  console.log("[Weekly] Generating...");
+  const text = await generateAIText(systemPrompt, userMessage, 2000);
+  console.log("[Weekly] RAW:", text);
+
   try {
     const cleaned = text.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
     const reportData = JSON.parse(cleaned);
 
-    const reportId = generateId();
+    // Simpan pnlSummary dari data real (bukan dari AI)
+    const pnlSummary = { totalValue, totalInvested, netPnl, netPnlPct };
+
+    // Simpan weekSummary + performers sebagai metadata prefix di coachingNotes
+    // karena schema tidak punya kolom terpisah
+    const meta = { weekSummary: reportData.weekSummary, topPerformer, worstPerformer };
+    const coachingNotesWithMeta = `__meta__:${JSON.stringify(meta)}\n\n${reportData.coachingNotes || ""}`;
+
     await db.insert(aiWeeklyReports).values({
-      id: reportId,
+      id: generateId(),
       userId: session.user.id,
       weekStart: weekAgo,
-      pnlSummary: JSON.stringify(reportData.pnlSummary),
-      coachingNotes: reportData.coachingNotes,
-      goalProgress: JSON.stringify(reportData.goalProgress),
-      recommendations: JSON.stringify(reportData.recommendations),
+      pnlSummary: JSON.stringify(pnlSummary),
+      coachingNotes: coachingNotesWithMeta,
+      goalProgress: JSON.stringify(reportData.goalProgress || []),
+      recommendations: JSON.stringify(reportData.recommendations || []),
       createdAt: new Date(),
     });
 
-    return NextResponse.json({ report: reportData });
-  } catch {
+    return NextResponse.json({
+      report: {
+        weekSummary: reportData.weekSummary || "",
+        topPerformer,
+        worstPerformer,
+        pnlSummary,
+        coachingNotes: reportData.coachingNotes || "",
+        goalProgress: reportData.goalProgress || [],
+        recommendations: reportData.recommendations || [],
+        createdAt: new Date().toISOString(),
+      },
+    });
+  } catch (e) {
+    console.error("[Weekly] Failed:", e, "\nRAW:", text);
     return NextResponse.json({ error: "Failed to generate report" }, { status: 500 });
   }
 }

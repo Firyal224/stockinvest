@@ -101,7 +101,7 @@ Respond ONLY in valid JSON:
   "overallFeedback": "2-3 sentence overall assessment"
 }`;
 
-  const text = await generateAIText(prompt, "Analyze my trading behavior", 800);
+  const text = await generateAIText(prompt, "Analyze my trading behavior", 1000);
   try {
     const cleaned = text.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
     return NextResponse.json({ coaching: JSON.parse(cleaned) });
