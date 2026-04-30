@@ -52,7 +52,7 @@ export async function POST(req: NextRequest) {
   if (!userData) return NextResponse.json({ error: "User not found" }, { status: 404 });
 
   // Check balance for buy
-  if (type === "buy" && userData.virtualBalance < totalValue) {
+  if (type === "buy" && (userData.virtualBalance ?? 0) < totalValue) {
     return NextResponse.json({ error: "Insufficient virtual balance" }, { status: 400 });
   }
 

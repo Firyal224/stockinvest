@@ -7,7 +7,7 @@ import { headers } from "next/headers";
 
 export default async function DashboardPage() {
   const session = await auth.api.getSession({ headers: await headers() });
-  const user = session?.user as typeof session.user & { riskProfile?: string | null };
+  const riskProfile = (session?.user as ({ riskProfile?: string | null } | undefined))?.riskProfile ?? "moderate";
 
   return (
     <div className="p-6 space-y-6">
@@ -25,7 +25,7 @@ export default async function DashboardPage() {
       {/* AI Highlights + Dividends side by side */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2">
-          <AIHighlights riskProfile={user?.riskProfile || "moderate"} />
+          <AIHighlights riskProfile={riskProfile} />
         </div>
         <div>
           <DividendStocks />
