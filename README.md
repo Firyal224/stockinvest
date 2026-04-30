@@ -5,7 +5,7 @@ A shadow portfolio simulator for Indonesian Stock Exchange (IDX) investors. Prac
 ## Features
 
 - **Shadow Trading** — Buy and sell IDX stocks using virtual balance. No real money involved.
-- **Live Market Board** — Real-time stock prices from Yahoo Finance for 500+ IDX stocks.
+- **Live Market Board** —  stock prices from Yahoo Finance for 500+ IDX stocks.
 - **AI Stock Analysis** — AI-powered buy/hold/sell recommendations with scoring and risk warnings.
 - **AI Sell Prediction** — Target price, stop-loss, and confidence level generated before every buy.
 - **Dividend Tracker** — Estimate annual, quarterly, and monthly dividend income per holding.
